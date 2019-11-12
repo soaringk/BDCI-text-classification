@@ -3,8 +3,9 @@
 
 # In[2]:
 
-
+import numpy as np
 import pandas as pd
+from sklearn.model_selection import train_test_split
 import tensorflow as tf
 import tensorflow_hub as hub
 import pickle
@@ -276,12 +277,16 @@ OUTPUT_DIR = 'output'
 # In[8]:
 
 
-with open("./data/safety_train_valid.pickle", 'rb') as f:
-    train, test = pickle.load(f)
+dataset = pd.read_csv('./data/train.csv')
+train_data, test = train_test_split(dataset, test_size=0.1, random_state=0)
 
-train = train.sample(len(train))
+train_data_pos = train_data.loc[train_data['label'] == 1]
+train_data_neg = train_data.loc[train_data['label'] == 0]
 
-train.head()
+train_set = np.array_split(train_data_neg, 6)
+for item in train_set:
+    item = item.append(train_data_pos)
+
 
 
 # In[9]:
@@ -299,14 +304,18 @@ myparam = {
 
 # In[10]:
 
-
-result, estimator = run_on_dfs(train, test, **myparam)
+result_set = []
+estimator_set = []
+for item in train_set:
+    result, estimator = run_on_dfs(item, test, **myparam)
+    result_set.append(result)
+    estimator_set.append(estimator)
 
 
 # In[ ]:
 
 
-pretty_print(result)
+pretty_print(result_set)
 
 
 # In[ ]:
@@ -345,24 +354,33 @@ def getPrediction(in_sentences, estimator):
 
 target = pd.read_csv('test_new.csv')
 pred_sentences = target['comment'].values.tolist()
-predictions = getPrediction(pred_sentences, estimator)
+predictions_set = []
+for estimator in estimator_set:
+    predictions = getPrediction(pred_sentences, estimator)
+    predictions_set.append(predictions)
 
 
 # In[ ]:
 
 
-predictions
+predictions_set
 
 
 # In[ ]:
 
+
+target['count'] = 0
+for prediction in predictions_set:
+    for row in range(len(predictions[0])):
+        if predictions[row][2] == 'Positive':
+            target.loc[row, 'count'] += 1
 
 target['label'] = None
-for row in range(len(predictions)):
-    if predictions[row][2] == 'Positive':
-        target.loc[row, 'label'] = 1
+for index, row in target.iterrows():
+    if row['count'] > 2:
+        row['label'] = 1
     else:
-        target.loc[row, 'label'] = 0
+        row['label'] = 0
 
 
 # In[ ]:
@@ -375,4 +393,4 @@ target.head()
 
 
 target_o = target[['id', 'label']]
-target_o.to_csv('./data/Predicts/output_ALBERT.csv', index=False)
+target_o.to_csv('./data/Predicts/output_BERT_ensemble.csv', index=False)
